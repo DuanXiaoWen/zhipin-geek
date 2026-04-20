@@ -13,32 +13,14 @@ import httpx
 
 from .constants import (
     BASE_URL,
-    BOSS_CHAT_GEEK_INFO_URL,
-    BOSS_CHATTED_JOB_LIST_URL,
-    BOSS_EXCHANGE_CONTENT_URL,
-    BOSS_EXCHANGE_REQUEST_URL,
-    BOSS_FRIEND_DETAIL_URL,
-    BOSS_FRIEND_LABELS_URL,
-    BOSS_FRIEND_LIST_URL,
-    BOSS_FRIEND_NOTE_URL,
-    BOSS_GREET_REC_SORT_URL,
-    BOSS_GREET_SORT_LIST_URL,
-    BOSS_HISTORY_MSG_URL,
-    BOSS_INTERVIEW_INVITE_URL,
-    BOSS_INTERVIEW_LIST_URL,
-    BOSS_JOB_OFFLINE_URL,
-    BOSS_JOB_ONLINE_URL,
-    BOSS_LAST_MSG_URL,
-    BOSS_REMOVE_FILTER_URL,
-    BOSS_SEARCH_GEEK_URL,
-    BOSS_SEND_MSG_URL,
-    BOSS_SESSION_ENTER_URL,
-    BOSS_VIEW_GEEK_URL,
     CITY_CODES,
     DELIVER_LIST_URL,
     FRIEND_ADD_URL,
     FRIEND_LIST_URL,
     GEEK_GET_JOB_URL,
+    GEEK_FRIEND_LIST_URL,
+    GEEK_HISTORY_MSG_URL,
+    GEEK_LAST_MSG_URL,
     HEADERS,
     INTERVIEW_DATA_URL,
     JOB_CARD_URL,
@@ -49,7 +31,6 @@ from .constants import (
     RESUME_EXPECT_URL,
     RESUME_STATUS_URL,
     USER_INFO_URL,
-    WEB_BOSS_CHAT_URL,
     WEB_GEEK_CHAT_URL,
     WEB_GEEK_HISTORY_URL,
     WEB_GEEK_JOB_URL,
@@ -196,21 +177,9 @@ class BossClient:
             headers["Referer"] = WEB_GEEK_JOB_URL
         elif url == JOB_HISTORY_URL:
             headers["Referer"] = WEB_GEEK_HISTORY_URL
-        elif url in (FRIEND_LIST_URL, FRIEND_ADD_URL):
+        elif url in (FRIEND_LIST_URL, FRIEND_ADD_URL, GEEK_FRIEND_LIST_URL,
+                      GEEK_LAST_MSG_URL, GEEK_HISTORY_MSG_URL):
             headers["Referer"] = WEB_GEEK_CHAT_URL
-        # Recruiter (boss) endpoints
-        elif url == BOSS_SEARCH_GEEK_URL:
-            headers["Referer"] = f"{BASE_URL}/web/chat/search"
-        elif url in (BOSS_VIEW_GEEK_URL, BOSS_SEND_MSG_URL):
-            headers["Referer"] = WEB_BOSS_CHAT_URL
-        elif url in (BOSS_FRIEND_LIST_URL, BOSS_FRIEND_DETAIL_URL, BOSS_LAST_MSG_URL,
-                      BOSS_HISTORY_MSG_URL, BOSS_CHAT_GEEK_INFO_URL, BOSS_FRIEND_LABELS_URL,
-                      BOSS_FRIEND_NOTE_URL, BOSS_GREET_SORT_LIST_URL, BOSS_GREET_REC_SORT_URL,
-                      BOSS_CHATTED_JOB_LIST_URL, BOSS_INTERVIEW_LIST_URL,
-                      BOSS_EXCHANGE_REQUEST_URL, BOSS_EXCHANGE_CONTENT_URL,
-                      BOSS_INTERVIEW_INVITE_URL, BOSS_REMOVE_FILTER_URL,
-                      BOSS_SESSION_ENTER_URL):
-            headers["Referer"] = WEB_BOSS_CHAT_URL
         return headers
 
     def _handle_response(self, data: dict[str, Any], action: str) -> dict[str, Any]:
@@ -454,8 +423,6 @@ class BossClient:
         """Get interacted job info."""
         return self._get(GEEK_GET_JOB_URL, params={"securityId": security_id}, action="互动职位")
 
-    # ── Recruiter (Boss) Mode ────────────────────────────────────────
-
     def _post(self, url: str, data: dict[str, Any] | None = None, action: str = "", json_body: bool = False) -> dict[str, Any]:
         """POST request with form-encoded or JSON body, response validation, and rate-limit retry."""
         kwargs = {"json": data} if json_body else {"data": data}
@@ -471,176 +438,79 @@ class BossClient:
             self._rate_limit_count = 0
             return result
 
-    def get_boss_chatted_jobs(self) -> list[dict[str, Any]]:
-        """Get list of jobs the boss has posted (chatted job list)."""
-        return self._get(BOSS_CHATTED_JOB_LIST_URL, action="招聘职位列表")
+    # ── Geek Chat & Exchange ─────────────────────────────────────────
 
-    def get_boss_friend_list(self, label_id: int = 0, enc_job_id: str = "", sort: str = "", page: int = 1) -> dict[str, Any]:
-        """Get boss friend list (candidates who have chatted)."""
+    def get_ws_auth(self) -> tuple[str, str]:
+        """Return (page_token, wt2) for MQTT WebSocket authentication."""
+        user_info = self._get(USER_INFO_URL, action="用户信息")
+        page_token = user_info.get("token", "")
+        wt_data = self._get("/wapi/zppassport/get/wt", action="WS Token")
+        wt2 = wt_data.get("wt2", "")
+        return page_token, wt2
+
+    def get_geek_friend_list(self, label_id: int = 0, page: int = 1) -> dict[str, Any]:
+        """Get geek chat friend list (bosses who have chatted with you)."""
         data: dict[str, Any] = {"labelId": label_id, "page": page}
-        if enc_job_id:
-            data["encJobId"] = enc_job_id
-        if sort:
-            data["sort"] = sort
-        return self._post(BOSS_FRIEND_LIST_URL, data=data, action="候选人列表")
+        return self._post(GEEK_FRIEND_LIST_URL, data=data, action="沟通列表")
 
-    def get_boss_friend_details(self, friend_ids: list[int]) -> dict[str, Any]:
-        """Get detailed info for boss friends (candidates)."""
+    def get_geek_last_messages(self, friend_ids: list[int]) -> list[dict[str, Any]]:
+        """Get last message for each boss friend (geek perspective)."""
         ids_str = ",".join(str(fid) for fid in friend_ids)
-        return self._post(BOSS_FRIEND_DETAIL_URL, data={"friendIds": ids_str}, action="候选人详情")
+        result = self._get(GEEK_LAST_MSG_URL, params={"friendIds": ids_str}, action="最近消息")
+        return result if isinstance(result, list) else []
 
-    def get_boss_last_messages(self, friend_ids: list[int], src: int = 0) -> list[dict[str, Any]]:
-        """Get last message for each friend."""
-        ids_str = ",".join(str(fid) for fid in friend_ids)
-        return self._post(BOSS_LAST_MSG_URL, data={"friendIds": ids_str, "src": src}, action="最近消息")
-
-    def get_boss_chat_history(self, gid: int, count: int = 20, max_msg_id: int = 0) -> dict[str, Any]:
-        """Get chat history with a specific candidate."""
-        params: dict[str, Any] = {"gid": gid, "c": count, "src": 0}
+    def get_geek_chat_history(self, boss_id: int, count: int = 20, max_msg_id: int = 0) -> dict[str, Any]:
+        """Get chat history with a specific boss (geek perspective)."""
+        params: dict[str, Any] = {"gid": boss_id, "c": count, "src": 0}
         if max_msg_id:
             params["maxMsgId"] = max_msg_id
-        return self._get(BOSS_HISTORY_MSG_URL, params=params, action="聊天记录")
+        return self._get(GEEK_HISTORY_MSG_URL, params=params, action="聊天记录")
 
-    def get_boss_chat_geek_info(
-        self, encrypt_geek_id: str, security_id: str, job_id: int,
-    ) -> dict[str, Any]:
-        """Get detailed info for a candidate in chat context."""
-        return self._get(
-            BOSS_CHAT_GEEK_INFO_URL,
-            params={"encryptGeekId": encrypt_geek_id, "securityId": security_id, "jobId": job_id},
-            action="候选人信息",
-        )
+    def get_geek_boss_data(self, boss_id: int) -> dict[str, Any]:
+        """Get boss chat context data (securityId, encryptJobId, mobile, weixin, etc.)."""
+        result = self._get("/wapi/zpchat/geek/getBossData", params={"bossId": boss_id}, action="Boss信息")
+        return result.get("data", result)
 
-    def get_boss_friend_labels(self) -> dict[str, Any]:
-        """Get recruiter's friend labels/tags."""
-        return self._get(BOSS_FRIEND_LABELS_URL, action="标签列表")
-
-    def get_boss_greet_list(self, enc_job_id: str = "", page: int = 1) -> dict[str, Any]:
-        """Get list of new greetings (candidates who greeted the boss)."""
-        params: dict[str, Any] = {"page": page}
-        if enc_job_id:
-            params["encJobId"] = enc_job_id
-        return self._get(BOSS_GREET_SORT_LIST_URL, params=params, action="新招呼列表")
-
-    def get_boss_greet_rec_list(self, enc_job_id: str = "", page: int = 1) -> dict[str, Any]:
-        """Get recommended greeting sort list."""
-        params: dict[str, Any] = {"page": page}
-        if enc_job_id:
-            params["encJobId"] = enc_job_id
-        return self._get(BOSS_GREET_REC_SORT_URL, params=params, action="推荐招呼排序")
-
-    def get_boss_interview_list(self) -> dict[str, Any]:
-        """Get boss interview list."""
-        return self._get(BOSS_INTERVIEW_LIST_URL, action="面试列表")
-
-    def search_geeks(
-        self, query: str, city: str = "101020100", page: int = 1,
-        experience: str | None = None, degree: str | None = None,
-        salary: str | None = None, encrypt_job_id: str = "",
-    ) -> dict[str, Any]:
-        """Search candidates (geeks) as a recruiter."""
-        params: dict[str, Any] = {
-            "query": query, "city": city, "page": page,
-        }
-        if encrypt_job_id:
-            params["encryptJobId"] = encrypt_job_id
-        if experience:
-            params["experience"] = experience
-        if degree:
-            params["degree"] = degree
-        if salary:
-            params["salary"] = salary
-        return self._get(BOSS_SEARCH_GEEK_URL, params=params, action="搜索候选人")
-
-    def get_boss_recommend_geeks(self, page: int = 1, enc_job_id: str = "") -> dict[str, Any]:
-        """Get recommended candidates (new greetings sorted by recommendation)."""
-        params: dict[str, Any] = {"page": page}
-        if enc_job_id:
-            params["encJobId"] = enc_job_id
-        return self._get(BOSS_GREET_REC_SORT_URL, params=params, action="推荐候选人")
-
-    def get_boss_view_geek(
-        self, encrypt_geek_id: str, encrypt_job_id: str, security_id: str = "",
-    ) -> dict[str, Any]:
-        """Get full candidate resume/profile view."""
-        params: dict[str, Any] = {
-            "encryptGeekId": encrypt_geek_id,
-            "encryptJobId": encrypt_job_id,
-        }
-        if security_id:
-            params["securityId"] = security_id
-        return self._get(BOSS_VIEW_GEEK_URL, params=params, action="候选人简历")
-
-    def boss_send_message(self, gid: int, content: str) -> dict[str, Any]:
-        """Send a text message to a candidate as a recruiter."""
+    def geek_exchange_request(self, boss_id: int, security_id: str, exchange_type: int) -> dict[str, Any]:
+        """Request exchange with a boss. exchange_type: 1=phone, 2=wechat, 3=resume."""
         return self._post(
-            BOSS_SEND_MSG_URL,
-            data={"gid": gid, "content": content},
-            action="发送消息",
-        )
-
-    def boss_job_offline(self, encrypt_job_id: str) -> dict[str, Any]:
-        """Take a job posting offline (close)."""
-        return self._post(BOSS_JOB_OFFLINE_URL, data={"encryptJobId": encrypt_job_id}, action="关闭职位")
-
-    def boss_job_online(self, encrypt_job_id: str) -> dict[str, Any]:
-        """Bring a job posting online (reopen)."""
-        return self._post(BOSS_JOB_ONLINE_URL, data={"encryptJobId": encrypt_job_id}, action="开启职位")
-
-    # ── Recruiter Chat Actions ────────────────────────────────────────
-
-    def boss_exchange_request(self, uid: int, job_id: int, exchange_type: int) -> dict[str, Any]:
-        """Request exchange with candidate.
-
-        exchange_type: 1=phone, 2=wechat, 3=resume
-        """
-        return self._post(
-            BOSS_EXCHANGE_REQUEST_URL,
-            data={"type": exchange_type, "uid": uid, "jobId": job_id, "gid": uid},
+            "/wapi/zpchat/exchange/request",
+            data={"type": exchange_type, "bossId": boss_id, "securityId": security_id},
             action="交换请求",
         )
 
-    def boss_get_exchange_content(self, uid: int) -> dict[str, Any]:
-        """Get exchanged contact info (phone/wechat) for a candidate."""
-        return self._post(
-            BOSS_EXCHANGE_CONTENT_URL,
-            data={"uid": uid},
-            action="查看交换内容",
-        )
+    def geek_send_resume(self, boss_id: int, security_id: str) -> dict[str, Any]:
+        """Send resume to a boss (exchange type=3)."""
+        return self.geek_exchange_request(boss_id, security_id, 3)
 
-    def boss_interview_invite(
-        self, encrypt_geek_id: str, encrypt_job_id: str, security_id: str,
-        address: str = "", start_time: str = "", description: str = "",
-    ) -> dict[str, Any]:
-        """Invite candidate for an interview."""
-        data: dict[str, Any] = {
-            "encryptGeekId": encrypt_geek_id,
-            "encryptJobId": encrypt_job_id,
-            "securityId": security_id,
-        }
-        if address:
-            data["address"] = address
-        if start_time:
-            data["startTime"] = start_time
-        if description:
-            data["description"] = description
-        return self._post(BOSS_INTERVIEW_INVITE_URL, data=data, action="约面试", json_body=True)
+    def geek_request_phone(self, boss_id: int, security_id: str) -> dict[str, Any]:
+        """Request phone number exchange with a boss (exchange type=1)."""
+        return self.geek_exchange_request(boss_id, security_id, 1)
 
-    def boss_mark_unsuitable(self, encrypt_geek_id: str, encrypt_job_id: str) -> dict[str, Any]:
-        """Mark candidate as unsuitable."""
-        return self._post(
-            BOSS_REMOVE_FILTER_URL,
-            data={"encryptGeekId": encrypt_geek_id, "encryptJobId": encrypt_job_id},
-            action="标记不合适",
-        )
+    def geek_request_wechat(self, boss_id: int, security_id: str) -> dict[str, Any]:
+        """Request WeChat exchange with a boss (exchange type=2)."""
+        return self.geek_exchange_request(boss_id, security_id, 2)
 
-    def boss_session_enter(self, geek_id: str, expect_id: str, job_id: str, security_id: str) -> dict[str, Any]:
-        """Enter a chat session with a candidate (required before sending messages)."""
-        return self._post(
-            BOSS_SESSION_ENTER_URL,
-            data={"geekId": geek_id, "expectId": expect_id, "jobId": job_id, "securityId": security_id},
-            action="进入会话",
-        )
+    def geek_accept_exchange(self, boss_id: int, mid: int, security_id: str = "") -> dict[str, Any]:
+        """Accept an exchange request from a boss. mid: msgId from userLastMsg."""
+        data: dict[str, Any] = {"bossId": boss_id, "mid": mid}
+        if security_id:
+            data["securityId"] = security_id
+        return self._post("/wapi/zpchat/geek/acceptItemContact", data=data, action="接受交换请求")
+
+    def geek_reject_exchange(self, boss_id: int, mid: int, security_id: str = "") -> dict[str, Any]:
+        """Reject an exchange request from a boss."""
+        data: dict[str, Any] = {"bossId": boss_id, "mid": mid}
+        if security_id:
+            data["securityId"] = security_id
+        return self._post("/wapi/zpchat/geek/rejectItemContact", data=data, action="拒绝交换请求")
+
+    def geek_accept_wechat(self, boss_id: int, mid: int, security_id: str = "") -> dict[str, Any]:
+        """Accept a WeChat exchange request from a boss."""
+        data: dict[str, Any] = {"bossId": boss_id, "mid": mid}
+        if security_id:
+            data["securityId"] = security_id
+        return self._post("/wapi/zpchat/geek/acceptItemWeiXinRequest", data=data, action="接受微信交换请求")
 
 
 # ── City resolution ─────────────────────────────────────────────────
