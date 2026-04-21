@@ -122,6 +122,28 @@ def login(qrcode: bool, cookie_source: str | None) -> None:
 
 
 @click.command()
+@click.option("--cookie-source", default=None, help="指定浏览器 (chrome/firefox/edge/brave/arc等)")
+def refresh(cookie_source: str | None) -> None:
+    """从本地浏览器同步最新 Cookie（无需扫码）"""
+    from ..auth import refresh_from_browser, verify_credential
+
+    cred, error = refresh_from_browser(cookie_source=cookie_source)
+    if error:
+        console.print(f"[red]❌ 刷新失败: {error}[/red]")
+        console.print("[dim]💡 确保已在浏览器登录 BOSS直聘，或使用 geek login --qrcode 重新扫码[/dim]")
+        raise SystemExit(1)
+
+    authenticated, reason = verify_credential(cred, force_refresh=True)
+    if authenticated:
+        console.print(f"[green]✅ Cookie 已刷新[/green] ({len(cred.cookies)} cookies)")
+    else:
+        console.print(f"[yellow]⚠️  Cookie 已同步，但登录态验证失败[/yellow]")
+        if reason:
+            console.print(f"  [dim]{reason}[/dim]")
+        console.print("[dim]浏览器 Cookie 可能也已过期，请重新登录 BOSS直聘 网页端后再试[/dim]")
+
+
+@click.command()
 def logout() -> None:
     """清除已保存的登录凭证"""
     from ..auth import clear_credential

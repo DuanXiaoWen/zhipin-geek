@@ -40,8 +40,8 @@ from boss_cli.constants import (
 
 logger = logging.getLogger(__name__)
 
-# Credential TTL: warn and attempt refresh after 7 days
-CREDENTIAL_TTL_DAYS = 7
+# Credential TTL: auto-refresh from browser after 1 day
+CREDENTIAL_TTL_DAYS = 1
 _CREDENTIAL_TTL_SECONDS = CREDENTIAL_TTL_DAYS * 86400
 
 # QR poll config
@@ -117,19 +117,24 @@ def load_credential() -> Credential | None:
                 return None
             logger.debug("Credential missing __zp_stoken__ (JS-generated), continuing")
 
-        # Check TTL — auto-refresh if stale
+        # Check TTL — silently refresh from browser if stale, fall back to existing on failure
         saved_at = data.get("saved_at", 0)
         if saved_at and (time.time() - saved_at) > _CREDENTIAL_TTL_SECONDS:
             logger.info(
-                "Credential older than %d days, attempting browser refresh",
+                "Credential older than %d day(s), attempting silent browser refresh",
                 CREDENTIAL_TTL_DAYS,
             )
-            fresh, _ = extract_browser_credential()
+            try:
+                fresh, _ = extract_browser_credential()
+            except Exception as exc:
+                logger.warning("Silent browser refresh raised: %s", exc)
+                fresh = None
             if fresh:
                 logger.info("Auto-refreshed credential from browser")
                 return fresh
             logger.warning(
-                "Cookie refresh failed; using existing cookies (age: %d+ days)",
+                "Silent cookie refresh failed; using existing cookies (age: %d+ day(s)). "
+                "Run 'geek refresh' to retry manually.",
                 CREDENTIAL_TTL_DAYS,
             )
         return cred
@@ -869,6 +874,26 @@ async def qr_login() -> Credential:
 
 
 # ── Unified get_credential ──────────────────────────────────────────
+
+def refresh_from_browser(cookie_source: str | None = None) -> tuple[Credential | None, str | None]:
+    """Pull fresh cookies from the local browser and persist them.
+
+    Returns (credential, error_message).  On success error_message is None.
+    On failure the existing saved credential is left untouched and error_message
+    describes what went wrong.
+    """
+    try:
+        cred, diagnostics = extract_browser_credential(cookie_source=cookie_source)
+    except Exception as exc:
+        return None, f"浏览器 Cookie 提取异常: {exc}"
+
+    if cred is None:
+        hint = _diagnose_extraction_issues(diagnostics)
+        detail = hint or "未在本地浏览器中找到 zhipin.com Cookie"
+        return None, detail
+
+    return cred, None
+
 
 def get_credential() -> Credential | None:
     """Try all auth methods and return credential.
