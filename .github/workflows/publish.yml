@@ -13,8 +13,8 @@ jobs:
   publish:
     needs: verify
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
+      contents: read
       id-token: write
 
     steps:
@@ -30,5 +30,15 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Publish to PyPI
+      # 任选其一：在仓库 Settings → Secrets 中设置 PYPI_API_TOKEN（pypi 上创建的项目级 API token），
+      # 即可无需配置 Trusted Publisher 完成上传；未设置时走 OIDC Trusted Publishing。
+      - name: Publish to PyPI (API token)
+        if: ${{ secrets.PYPI_API_TOKEN != '' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Publish to PyPI (Trusted Publishing)
+        if: ${{ secrets.PYPI_API_TOKEN == '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
