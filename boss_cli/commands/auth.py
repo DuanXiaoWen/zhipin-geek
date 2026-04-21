@@ -137,7 +137,7 @@ def refresh(cookie_source: str | None) -> None:
     if authenticated:
         console.print(f"[green]✅ Cookie 已刷新[/green] ({len(cred.cookies)} cookies)")
     else:
-        console.print(f"[yellow]⚠️  Cookie 已同步，但登录态验证失败[/yellow]")
+        console.print("[yellow]⚠️  Cookie 已同步，但登录态验证失败[/yellow]")
         if reason:
             console.print(f"  [dim]{reason}[/dim]")
         console.print("[dim]浏览器 Cookie 可能也已过期，请重新登录 BOSS直聘 网页端后再试[/dim]")

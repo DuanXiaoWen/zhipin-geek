@@ -16,10 +16,8 @@ Proto schema (reverse-engineered from JS bundle):
 from __future__ import annotations
 
 import logging
-import struct
 import threading
 import time
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 

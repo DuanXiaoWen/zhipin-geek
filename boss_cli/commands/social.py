@@ -264,7 +264,7 @@ def messages(count: int, as_json: bool, as_yaml: bool) -> None:
             )
 
         console.print(table)
-        console.print(f"\n[dim]提示: 使用 boss history <friendId> 查看完整聊天记录[/dim]")
+        console.print("\n[dim]提示: 使用 geek chat-history <friendId> 查看完整聊天记录[/dim]")
 
     handle_command(cred, action=_action, render=_render, as_json=as_json, as_yaml=as_yaml)
 
@@ -343,7 +343,7 @@ def unread_messages(count: int, as_json: bool, as_yaml: bool) -> None:
             )
 
         console.print(table)
-        console.print(f"\n[dim]提示: 使用 boss reply <friendId> \"回复内容\" 发送消息[/dim]")
+        console.print('\n[dim]提示: 使用 geek reply <friendId> "回复内容" 发送消息[/dim]')
 
     handle_command(cred, action=_action, render=_render, as_json=as_json, as_yaml=as_yaml)
 
@@ -364,7 +364,7 @@ def geek_reply(friend_id: int, message: str) -> None:
         console.print(f"[red]❌ {exc}[/red]")
         raise SystemExit(1) from None
 
-    console.print(f"[dim]正在获取认证信息...[/dim]")
+    console.print("[dim]正在获取认证信息...[/dim]")
 
     # Step 1: Get all needed info via HTTP
     try:
@@ -391,7 +391,7 @@ def geek_reply(friend_id: int, message: str) -> None:
     boss_name = friend.get("name", str(boss_uid))
     cookies = dict(cred.cookies)
 
-    console.print(f"[dim]连接 MQTT...[/dim]")
+    console.print("[dim]连接 MQTT...[/dim]")
 
     try:
         with BossMQTTChat(page_token, wt2, cookies=cookies, timeout=12) as chat:
