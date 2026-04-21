@@ -12,6 +12,10 @@ uv tool install zhipin-geek
 
 # 或 pipx
 pipx install zhipin-geek
+
+# 或 pip（安装到当前 Python 环境）
+pip install zhipin-geek
+pip install "zhipin-geek[yaml]"   # 需要 --yaml 时
 ```
 
 从源码安装：

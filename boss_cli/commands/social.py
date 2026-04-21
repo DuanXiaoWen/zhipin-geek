@@ -24,6 +24,20 @@ from ._common import (
 logger = logging.getLogger(__name__)
 
 
+def _load_geek_friends_all_pages(client, max_pages: int = 40) -> list[dict]:
+    """拉取全部分页的沟通列表，避免 friendId 落在第 2 页及以后时 `reply` 误判为不存在。"""
+    friends: list[dict] = []
+    page = 1
+    while page <= max_pages:
+        data = client.get_geek_friend_list(page=page)
+        batch = data.get("friendList") or []
+        friends.extend(batch)
+        if not data.get("hasMore", False) or not batch:
+            break
+        page += 1
+    return friends
+
+
 @click.command("chat")
 @structured_output_options
 def chat_list(as_json: bool, as_yaml: bool) -> None:
@@ -354,8 +368,7 @@ def geek_reply(friend_id: int, message: str) -> None:
 
     # Step 1: Get all needed info via HTTP
     try:
-        friends_data = run_client_action(cred, lambda c: c.get_geek_friend_list())
-        friends = friends_data.get("friendList", [])
+        friends = run_client_action(cred, lambda c: _load_geek_friends_all_pages(c))
         friend = next((f for f in friends if f["friendId"] == friend_id), None)
         if not friend:
             console.print(f"[red]❌ 找不到 friendId={friend_id}，请用 boss messages 查看列表[/red]")
