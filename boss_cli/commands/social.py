@@ -352,9 +352,9 @@ def unread_messages(count: int, as_json: bool, as_yaml: bool) -> None:
 @click.argument("friend_id", type=int)
 @click.argument("message")
 def geek_reply(friend_id: int, message: str) -> None:
-    """向 Boss 发送消息 (需要 friendId，可从 boss messages 获取)
+    """向 Boss 发送消息 (需要 friendId，可从 geek messages / geek unread 获取)
 
-    例: boss reply 605029326 "您好，我对这个职位很感兴趣"
+    例: geek reply 605029326 "您好，我对这个职位很感兴趣"
     """
     cred = require_auth()
 
@@ -371,7 +371,7 @@ def geek_reply(friend_id: int, message: str) -> None:
         friends = run_client_action(cred, lambda c: _load_geek_friends_all_pages(c))
         friend = next((f for f in friends if f["friendId"] == friend_id), None)
         if not friend:
-            console.print(f"[red]❌ 找不到 friendId={friend_id}，请用 boss messages 查看列表[/red]")
+            console.print(f"[red]❌ 找不到 friendId={friend_id}，请用 geek messages / geek unread --json 查看 friend.friendId（勿用表格序号）[/red]")
             raise SystemExit(1)
 
         # Get my own info
@@ -414,32 +414,67 @@ def geek_reply(friend_id: int, message: str) -> None:
 @click.option("-n", "--count", default=20, type=int, help="获取最近 N 条消息 (默认: 20)")
 @structured_output_options
 def chat_history(friend_id: int, count: int, as_json: bool, as_yaml: bool) -> None:
-    """查看与某个 Boss 的双向聊天记录 (需要 friendId，可从 boss messages 获取)"""
+    """查看与某个 Boss 的双向聊天记录 (需要 friendId，可从 geek messages / geek unread 获取)"""
     cred = require_auth()
 
     def _action(client):
-        return client.get_geek_chat_history(boss_id=friend_id, count=count)
+        return client.get_geek_chat_history_all(boss_id=friend_id, count=count)
 
     def _render(data: dict) -> None:
         msg_list = data.get("messages", data.get("msgList", []))
+        total = data.get("total", len(msg_list))
         if not msg_list:
             console.print("[yellow]暂无聊天记录（仅显示双向对话记录，如对方发消息但你未回复则为空）[/yellow]")
             return
 
+        # Determine my uid: the uid that appears in "to" field of received messages
+        # (received=True means the message is from the boss, so "to" is me)
         my_uid = None
         for m in msg_list:
-            if m.get("fromType") == 1:
-                my_uid = m.get("fromId")
+            if m.get("received") and m.get("to", {}).get("uid"):
+                my_uid = m["to"]["uid"]
                 break
 
-        console.print(f"\n[bold]聊天记录 (friendId={friend_id})[/bold]\n")
+        console.print(f"\n[bold]聊天记录 (friendId={friend_id}, 共 {total} 条)[/bold]\n")
         for m in reversed(msg_list):
-            from_id = m.get("fromId")
-            content = m.get("body", m.get("content", m.get("showText", "-")))
-            ts = m.get("msgTime", 0)
+            # Determine sender: prefer from/received fields, fallback to fromId
+            from_obj = m.get("from", {})
+
+            if from_obj:
+                from_uid = from_obj.get("uid", 0)
+                is_me = from_uid == my_uid
+            else:
+                from_uid = m.get("fromId", 0)
+                is_me = my_uid is not None and from_uid == my_uid
+
+            # Extract content from body
+            body = m.get("body", {})
+            if isinstance(body, dict):
+                content = body.get("text", body.get("showText", ""))
+                if not content:
+                    # Non-text message (job card, image, etc.)
+                    body_type = body.get("type", 0)
+                    if body_type == 8:
+                        content = f"[职位卡片] {body.get('jobDesc', {}).get('title', '未知职位')}"
+                    elif body_type == 2:
+                        content = "[图片]"
+                    elif body_type == 3:
+                        content = "[语音]"
+                    else:
+                        content = f"[消息类型 {body_type}]"
+            else:
+                content = str(body) if body else "-"
+
+            # Timestamp: prefer "time" field, fallback to "msgTime"
+            ts = m.get("time", m.get("msgTime", 0))
             time_str = datetime.fromtimestamp(ts / 1000).strftime("%m-%d %H:%M") if ts else "-"
-            is_me = from_id == my_uid
-            prefix = "[bold blue]我[/bold blue]" if is_me else "[bold green]Boss[/bold green]"
+
+            if is_me:
+                prefix = "[bold blue]我[/bold blue]"
+            else:
+                boss_name = from_obj.get("name", "Boss") if from_obj else "Boss"
+                prefix = f"[bold green]{boss_name}[/bold green]"
+
             console.print(f"  {time_str}  {prefix}: {content}")
 
     handle_command(cred, action=_action, render=_render, as_json=as_json, as_yaml=as_yaml)

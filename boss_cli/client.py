@@ -461,10 +461,68 @@ class BossClient:
 
     def get_geek_chat_history(self, boss_id: int, count: int = 20, max_msg_id: int = 0) -> dict[str, Any]:
         """Get chat history with a specific boss (geek perspective)."""
-        params: dict[str, Any] = {"gid": boss_id, "c": count, "src": 0}
+        # historyMsg requires securityId — fetch it first
+        boss_data = self.get_geek_boss_data(boss_id)
+        security_id = boss_data.get("securityId", "")
+        params: dict[str, Any] = {
+            "gid": boss_id,
+            "c": count,
+            "src": 0,
+            "securityId": security_id,
+        }
         if max_msg_id:
             params["maxMsgId"] = max_msg_id
         return self._get(GEEK_HISTORY_MSG_URL, params=params, action="聊天记录")
+
+    def get_geek_chat_history_all(
+        self, boss_id: int, count: int = 20, max_pages: int = 50
+    ) -> dict[str, Any]:
+        """Get chat history with pagination, up to *count* messages.
+
+        The underlying API requires a securityId (fetched via getBossData) and
+        returns at most ~20 messages per page.  This method loops with
+        ``maxMsgId`` until the requested ``count`` is reached or no more
+        messages are available.
+        """
+        # historyMsg requires securityId — fetch it first
+        boss_data = self.get_geek_boss_data(boss_id)
+        security_id = boss_data.get("securityId", "")
+        if not security_id:
+            logger.warning("无法获取 securityId (bossId=%d)，聊天记录可能为空", boss_id)
+            return {"messages": [], "total": 0}
+
+        page_size = min(count, 20)
+        all_messages: list[dict[str, Any]] = []
+        max_msg_id = 0
+
+        for _ in range(max_pages):
+            params: dict[str, Any] = {
+                "gid": boss_id,
+                "c": page_size,
+                "src": 0,
+                "securityId": security_id,
+            }
+            if max_msg_id:
+                params["maxMsgId"] = max_msg_id
+            resp: dict[str, Any] = self._get(
+                GEEK_HISTORY_MSG_URL, params=params, action="聊天记录"
+            )
+            batch = resp.get("messages", resp.get("msgList", []))
+            if not batch:
+                break
+            all_messages.extend(batch)
+            if len(all_messages) >= count:
+                all_messages = all_messages[:count]
+                break
+            # Next page cursor — API returns minMsgId (oldest message id in batch)
+            next_id = resp.get("minMsgId", 0)
+            if not next_id:
+                next_id = batch[-1].get("mid", batch[-1].get("msgId", batch[-1].get("id", 0)))
+            if next_id == max_msg_id:
+                break
+            max_msg_id = next_id
+
+        return {"messages": all_messages, "total": len(all_messages)}
 
     def get_geek_boss_data(self, boss_id: int) -> dict[str, Any]:
         """Get boss chat context data (securityId, encryptJobId, mobile, weixin, etc.)."""
