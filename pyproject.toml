@@ -1,6 +1,6 @@
 [project]
 name = "zhipin-geek"
-version = "0.1.0"
+version = "0.1.1"
 description = "BOSS 直聘求职端 CLI — 搜索职位、查看消息、发送简历、交换联系方式"
 readme = "README.md"
 license = "Apache-2.0"
@@ -17,7 +17,7 @@ classifiers = [
 dependencies = [
     "click>=8.0",
     "rich>=13.0",
-    "httpx>=0.27",
+    "httpx[socks]>=0.27",
     "browser-cookie3>=0.19",
     "qrcode>=7.0",
     "paho-mqtt>=1.6,<3.0",
