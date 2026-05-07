@@ -32,3 +32,4 @@ htmlcov/
 
 # Config (DO NOT commit credentials)
 credential.json
+extract_cookies.py
